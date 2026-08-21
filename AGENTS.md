@@ -133,14 +133,14 @@ Attribution:
    ```bash
    npm run release:local -- --out /tmp/pi-local-release --force
    cd /tmp
-
+   
    # Node package install smoke tests
    /tmp/pi-local-release/node/pi --help
    /tmp/pi-local-release/node/pi --version
    /tmp/pi-local-release/node/pi --list-models
    /tmp/pi-local-release/node/pi -p "Say exactly: ok"
    /tmp/pi-local-release/node/pi
-
+   
    # Bun binary smoke tests
    /tmp/pi-local-release/bun/pi --help
    /tmp/pi-local-release/bun/pi --version
