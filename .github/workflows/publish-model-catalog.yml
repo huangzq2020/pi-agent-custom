@@ -1,32 +1,32 @@
 name: Publish Model Catalog
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    types:
-      - completed
-  pull_request:
-    paths:
-      - '.github/workflows/publish-model-catalog.yml'
-      - '.gitignore'
-      - 'package.json'
-      - 'packages/ai/**'
-      - 'scripts/publish-model-catalog.mjs'
-  # GitHub schedules use UTC. Run hourly candidates across the CET/CEST
-  # boundaries; the publish job only uploads at 10:17, 12:17, and 14:17
-  # Europe/Vienna time.
-  schedule:
-    - cron: '17 8-13 * * 1-5'
+  # workflow_run:
+  #   workflows:
+  #     - CI
+  #   types:
+  #     - completed
+
+  # pull_request:
+  #   paths:
+  #     - '.github/workflows/publish-model-catalog.yml'
+  #     - '.gitignore'
+  #     - 'package.json'
+  #     - 'packages/ai/**'
+  #     - 'scripts/publish-model-catalog.mjs'
+
+  # schedule:
+  #   - cron: '17 8-13 * * 1-5'
+
   workflow_dispatch:
     inputs:
       source_ref:
-        description: 'Commit, branch, or tag to generate from'
+        description: "Commit, branch, or tag to generate from"
         required: false
-        default: 'main'
+        default: "main"
         type: string
       publish:
-        description: 'Upload the generated catalog to production R2'
+        description: "Upload the generated catalog to production R2"
         required: true
         default: false
         type: boolean
@@ -50,7 +50,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
 
       - name: Install dependencies
@@ -83,7 +83,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.PI_ARTIFACTS_R2_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.PI_ARTIFACTS_R2_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
-      AWS_EC2_METADATA_DISABLED: 'true'
+      AWS_EC2_METADATA_DISABLED: "true"
       R2_ENDPOINT: https://67c0d357268b0fca6e0b465bb9d01b84.r2.cloudflarestorage.com
     steps:
       - name: Checkout
@@ -95,7 +95,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Download model catalog JSON
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
