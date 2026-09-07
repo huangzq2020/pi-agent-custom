@@ -1,0 +1,12 @@
+id: project_analysis
+name: 项目分析
+description: 生成项目技术画像和仓库摘要。
+version: 1.0.0
+steps:
+  - id: profile
+    title: 识别技术栈
+    tool: project_profile
+  - id: summary
+    title: 汇总仓库结构
+    tool: repo_summary
+    needs: [profile]

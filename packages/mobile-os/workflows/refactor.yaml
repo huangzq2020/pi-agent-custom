@@ -1,0 +1,17 @@
+id: refactor
+name: 代码重构
+description: 实施小范围、可验证且保持行为的重构。
+version: 1.0.0
+steps:
+  - id: changes
+    title: 获取改动上下文
+    tool: git_change_graph
+  - id: implementation
+    title: 实施重构
+    needs: [changes]
+    readOnly: false
+    agent: |
+      基于当前代码选择一个边界清晰、无需删除功能的重构机会并实施。
+      当前改动图：
+      {{steps.changes}}
+      保持外部行为，遵守仓库指令，运行必要检查。最后说明问题、具体例子、解决方案和验证结果。

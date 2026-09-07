@@ -1,0 +1,17 @@
+id: test_generation
+name: 测试生成
+description: 识别测试薄弱路径，生成并验证针对性测试。
+version: 1.0.0
+steps:
+  - id: repository
+    title: 分析测试结构
+    tool: repo_summary
+  - id: implementation
+    title: 生成测试
+    needs: [repository]
+    readOnly: false
+    agent: |
+      分析现有测试约定和覆盖薄弱路径，选择一个高价值行为补充针对性测试。
+      项目摘要：
+      {{steps.repository}}
+      遵守仓库指令，运行新增的测试并修复失败。最后列出修改文件和验证结果。

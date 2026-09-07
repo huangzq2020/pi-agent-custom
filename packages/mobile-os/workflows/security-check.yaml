@@ -1,0 +1,17 @@
+id: security_check
+name: 安全检查
+description: 检查认证、输入、依赖和敏感信息风险。
+version: 1.0.0
+steps:
+  - id: repository
+    title: 识别攻击面
+    tool: repo_summary
+  - id: audit
+    title: 执行安全审查
+    needs: [repository]
+    readOnly: true
+    agent: |
+      对项目做安全审查，重点检查认证授权、命令或 SQL 注入、路径穿越、密钥泄漏、跨站风险和不安全默认配置。
+      项目摘要：
+      {{steps.repository}}
+      只报告有代码证据的发现；按严重度排序并给出修复方案。不要修改文件。

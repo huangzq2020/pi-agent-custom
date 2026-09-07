@@ -1,0 +1,17 @@
+id: docker_review
+name: 容器配置检查
+description: 检查 Docker 构建、安全与运行时配置。
+version: 1.0.0
+steps:
+  - id: repository
+    title: 定位容器配置
+    tool: repo_summary
+  - id: audit
+    title: 审查容器配置
+    needs: [repository]
+    readOnly: true
+    agent: |
+      阅读 Dockerfile、compose 文件和部署脚本，检查基础镜像固定、非 root 用户、密钥、构建上下文、缓存层、健康检查和镜像体积。
+      项目摘要：
+      {{steps.repository}}
+      按严重度给出有证据的发现。不要修改文件。

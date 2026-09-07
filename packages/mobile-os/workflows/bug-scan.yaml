@@ -1,0 +1,22 @@
+id: bug_scan
+name: Bug 检测
+description: 分析项目结构、未提交改动和潜在缺陷。
+version: 1.0.0
+steps:
+  - id: repository
+    title: 扫描项目
+    tool: repo_summary
+  - id: changes
+    title: 分析当前改动
+    tool: git_change_graph
+  - id: review
+    title: 定位缺陷
+    needs: [repository, changes]
+    readOnly: true
+    agent: |
+      对当前项目执行针对性 Bug 审查。先阅读与风险相关的文件，必要时使用搜索工具。
+      项目摘要：
+      {{steps.repository}}
+      当前改动图：
+      {{steps.changes}}
+      只报告可验证的问题，并给出文件位置、触发条件、影响和最小修复建议。不要修改文件。

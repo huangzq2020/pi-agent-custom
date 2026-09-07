@@ -1,0 +1,41 @@
+{
+	"name": "@earendil-works/pi-mobile-os",
+	"version": "0.84.2",
+	"description": "Mobile gateway, workflow platform, and runtime extensions for Pi Agent",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"files": [
+		"dist",
+		"workflows",
+		"README.md",
+		"CHANGELOG.md"
+	],
+	"scripts": {
+		"build": "tsgo -p tsconfig.build.json",
+		"dev": "tsx src/cli.ts",
+		"start": "node dist/cli.js",
+		"test": "vitest --run",
+		"typecheck": "tsgo -p tsconfig.test.json",
+		"prepublishOnly": "npm run build"
+	},
+	"dependencies": {
+		"@earendil-works/pi-coding-agent": "^0.84.2",
+		"ws": "8.21.0",
+		"yaml": "2.9.0"
+	},
+	"devDependencies": {
+		"@types/ws": "8.18.1",
+		"vitest": "4.1.9"
+	},
+	"engines": {
+		"node": ">=22.19.0"
+	},
+	"license": "MIT"
+}

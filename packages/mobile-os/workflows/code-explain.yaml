@@ -1,0 +1,17 @@
+id: code_explain
+name: 代码解释
+description: 说明项目架构、主要数据流与扩展点。
+version: 1.0.0
+steps:
+  - id: repository
+    title: 扫描结构
+    tool: repo_summary
+  - id: explanation
+    title: 生成架构说明
+    needs: [repository]
+    readOnly: true
+    agent: |
+      阅读项目入口和关键模块，解释系统边界、主要数据流、状态存储、外部依赖和最重要的扩展点。
+      项目摘要：
+      {{steps.repository}}
+      输出适合手机阅读的短段落，并引用具体文件。不要修改文件。

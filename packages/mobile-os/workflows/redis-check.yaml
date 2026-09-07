@@ -1,0 +1,17 @@
+id: redis_check
+name: Redis 缓存分析
+description: 检查 Redis 键、TTL、失效、一致性和故障降级。
+version: 1.0.0
+steps:
+  - id: repository
+    title: 定位缓存代码
+    tool: repo_summary
+  - id: audit
+    title: 检查缓存策略
+    needs: [repository]
+    readOnly: true
+    agent: |
+      定位所有 Redis 使用点，检查键命名、TTL、缓存穿透/击穿、序列化兼容性、并发一致性和 Redis 故障时的降级。
+      项目摘要：
+      {{steps.repository}}
+      只报告有代码证据的问题并给出具体改进。不要修改文件。
