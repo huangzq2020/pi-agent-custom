@@ -62,8 +62,14 @@ class MobileApiClient {
     return _analysis(body);
   }
 
-  Future<List<GitHubRepository>> searchGitHub(String query) async {
-    final body = await _request('GET', '/v1/github/search', null, {'q': query});
+  Future<List<GitHubRepository>> searchGitHub(
+    String query, {
+    String sort = 'best-match',
+  }) async {
+    final body = await _request('GET', '/v1/github/search', null, {
+      'q': query,
+      'sort': sort,
+    });
     return objectList(
       body['repositories'],
     ).map(GitHubRepository.fromJson).toList();
@@ -88,6 +94,21 @@ class MobileApiClient {
       content: body['content']! as String,
       truncated: body['truncated']! as bool,
     );
+  }
+
+  Future<void> createRemoteDirectory(String parent, String name) async {
+    await _request('POST', '/v1/files/directories', {
+      'parent': parent,
+      'name': name,
+    });
+  }
+
+  Future<void> renameRemoteEntry(String path, String name) async {
+    await _request('POST', '/v1/files/rename', {'path': path, 'name': name});
+  }
+
+  Future<void> deleteRemoteDirectory(String path) async {
+    await _request('POST', '/v1/files/delete-directory', {'path': path});
   }
 
   Future<List<TaskSnapshot>> listTasks() async {

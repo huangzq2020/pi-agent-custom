@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../api_client.dart';
 import '../app_state.dart';
@@ -26,8 +27,22 @@ class FileBrowserScreen extends StatelessWidget {
   );
 }
 
+class RemoteDirectoryPickerScreen extends StatelessWidget {
+  const RemoteDirectoryPickerScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('选择电脑项目目录')),
+    body: _RemoteFiles(
+      onDirectorySelected: (path) => Navigator.of(context).pop(path),
+    ),
+  );
+}
+
 class _RemoteFiles extends ConsumerStatefulWidget {
-  const _RemoteFiles();
+  const _RemoteFiles({this.onDirectorySelected});
+
+  final ValueChanged<String>? onDirectorySelected;
 
   @override
   ConsumerState<_RemoteFiles> createState() => _RemoteFilesState();
@@ -51,44 +66,46 @@ class _RemoteFilesState extends ConsumerState<_RemoteFiles> {
       children: [
         Material(
           color: Theme.of(context).colorScheme.surfaceContainer,
-          child: Row(
+          child: Column(
             children: [
-              IconButton(
-                tooltip: '上一级',
-                onPressed: loading || directory == null
-                    ? null
-                    : () => _load(directory!.parent),
-                icon: const Icon(Icons.arrow_upward),
-              ),
-              Expanded(
-                child: Text(
-                  directory?.path ?? '电脑授权目录',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: '上一级',
+                    onPressed: loading || directory == null
+                        ? null
+                        : () => _load(directory!.parent),
+                    icon: const Icon(Icons.arrow_upward),
+                  ),
+                  Expanded(
+                    child: Text(
+                      directory?.path ?? '电脑授权目录',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '刷新',
+                    onPressed: loading ? null : () => _load(directory?.path),
+                    icon: const Icon(Icons.refresh),
+                  ),
+                ],
               ),
               if (directory?.path != null)
-                IconButton(
-                  tooltip: '作为项目分析',
-                  onPressed: loading
-                      ? null
-                      : () async {
-                          await ref
-                              .read(mobileControllerProvider.notifier)
-                              .analyze(directory!.path!);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('项目已载入，请切换到“项目”页面')),
-                            );
-                          }
-                        },
-                  icon: const Icon(Icons.analytics_outlined),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: loading
+                        ? null
+                        : () => _selectAsProject(directory!.path!),
+                    icon: const Icon(Icons.drive_file_move_outline),
+                    label: Text(
+                      widget.onDirectorySelected == null
+                          ? '将当前目录设为项目'
+                          : '选择当前目录',
+                    ),
+                  ),
                 ),
-              IconButton(
-                tooltip: '刷新',
-                onPressed: loading ? null : () => _load(directory?.path),
-                icon: const Icon(Icons.refresh),
-              ),
             ],
           ),
         ),
@@ -121,12 +138,208 @@ class _RemoteFilesState extends ConsumerState<_RemoteFiles> {
                     : null,
                 onTap: () =>
                     entry.isDirectory ? _load(entry.path) : _preview(entry),
+                onLongPress: loading ? null : () => _showEntryActions(entry),
               );
             },
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _selectAsProject(String path) async {
+    final callback = widget.onDirectorySelected;
+    if (callback != null) {
+      callback(path);
+      return;
+    }
+    await ref.read(mobileControllerProvider.notifier).analyze(path);
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('项目已载入，请切换到“项目”页面')));
+    }
+  }
+
+  Future<void> _showEntryActions(RemoteFileEntry entry) async {
+    final roots = ref.read(mobileControllerProvider).device?.roots ?? const [];
+    final isRoot = roots.contains(entry.path);
+    final action = await showModalBottomSheet<_RemoteFileAction>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('复制路径'),
+              onTap: () => Navigator.pop(context, _RemoteFileAction.copyPath),
+            ),
+            if (entry.isDirectory)
+              ListTile(
+                leading: const Icon(Icons.create_new_folder_outlined),
+                title: const Text('在此文件夹中新建文件夹'),
+                onTap: () =>
+                    Navigator.pop(context, _RemoteFileAction.createDirectory),
+              ),
+            if (entry.isDirectory)
+              ListTile(
+                leading: const Icon(Icons.drive_file_move_outline),
+                title: Text(
+                  widget.onDirectorySelected == null ? '设为项目目录' : '选择此目录',
+                ),
+                onTap: () =>
+                    Navigator.pop(context, _RemoteFileAction.selectProject),
+              ),
+            if (!isRoot)
+              ListTile(
+                leading: const Icon(Icons.drive_file_rename_outline),
+                title: const Text('重命名'),
+                onTap: () => Navigator.pop(context, _RemoteFileAction.rename),
+              ),
+            if (entry.isDirectory && !isRoot)
+              ListTile(
+                leading: Icon(
+                  Icons.delete_outline,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                title: Text(
+                  '删除文件夹',
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+                onTap: () =>
+                    Navigator.pop(context, _RemoteFileAction.deleteDirectory),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+
+    switch (action) {
+      case _RemoteFileAction.copyPath:
+        await Clipboard.setData(ClipboardData(text: entry.path));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('路径已复制')));
+        }
+        return;
+      case _RemoteFileAction.createDirectory:
+        await _createDirectory(entry.path);
+        return;
+      case _RemoteFileAction.selectProject:
+        await _selectAsProject(entry.path);
+        return;
+      case _RemoteFileAction.rename:
+        await _rename(entry);
+        return;
+      case _RemoteFileAction.deleteDirectory:
+        await _deleteDirectory(entry);
+        return;
+    }
+  }
+
+  Future<void> _createDirectory(String parent) async {
+    final name = await _askForName(title: '创建文件夹', label: '文件夹名称');
+    if (name == null) return;
+    try {
+      await ref
+          .read(mobileControllerProvider.notifier)
+          .createRemoteDirectory(parent, name);
+      await _load(parent);
+    } catch (exception) {
+      _showError(exception);
+    }
+  }
+
+  Future<void> _rename(RemoteFileEntry entry) async {
+    final name = await _askForName(
+      title: '重命名',
+      label: '新名称',
+      initialValue: entry.name,
+    );
+    if (name == null || name == entry.name) return;
+    try {
+      await ref
+          .read(mobileControllerProvider.notifier)
+          .renameRemoteEntry(entry.path, name);
+      await _load(directory?.path);
+    } catch (exception) {
+      _showError(exception);
+    }
+  }
+
+  Future<void> _deleteDirectory(RemoteFileEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('删除“${entry.name}”？'),
+        content: const Text('该文件夹及其全部内容将被永久删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref
+          .read(mobileControllerProvider.notifier)
+          .deleteRemoteDirectory(entry.path);
+      await _load(directory?.path);
+    } catch (exception) {
+      _showError(exception);
+    }
+  }
+
+  Future<String?> _askForName({
+    required String title,
+    required String label,
+    String initialValue = '',
+  }) async {
+    final controller = TextEditingController(text: initialValue);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(labelText: label),
+          onSubmitted: (value) {
+            if (value.trim().isNotEmpty) Navigator.pop(context, value.trim());
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim();
+              if (value.isNotEmpty) Navigator.pop(context, value);
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  void _showError(Object exception) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$exception')));
   }
 
   Future<void> _load([String? path]) async {
@@ -188,6 +401,14 @@ class _RemoteFilesState extends ConsumerState<_RemoteFiles> {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KiB';
     return '${(bytes / 1024 / 1024).toStringAsFixed(1)} MiB';
   }
+}
+
+enum _RemoteFileAction {
+  copyPath,
+  createDirectory,
+  selectProject,
+  rename,
+  deleteDirectory,
 }
 
 class _LocalFiles extends StatefulWidget {

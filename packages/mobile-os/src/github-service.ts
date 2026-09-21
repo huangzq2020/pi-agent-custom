@@ -4,6 +4,8 @@ import { basename } from "node:path";
 import type { ProjectPathPolicy } from "./path-policy.ts";
 import type { GitHubRepository } from "./types.ts";
 
+export type GitHubSearchSort = "best-match" | "stars-asc" | "stars-desc";
+
 export class GitHubService {
 	private readonly pathPolicy: ProjectPathPolicy;
 	private readonly token?: string;
@@ -13,7 +15,11 @@ export class GitHubService {
 		this.token = token;
 	}
 
-	async search(query: string, page = 1): Promise<{ total: number; repositories: GitHubRepository[] }> {
+	async search(
+		query: string,
+		page = 1,
+		sort: GitHubSearchSort = "best-match",
+	): Promise<{ total: number; repositories: GitHubRepository[] }> {
 		const cleanQuery = query.trim();
 		if (!cleanQuery) throw new Error("GitHub search query is required");
 		if (cleanQuery.length > 256) throw new Error("GitHub search query is too long");
@@ -21,6 +27,10 @@ export class GitHubService {
 		url.searchParams.set("q", cleanQuery);
 		url.searchParams.set("page", String(Math.min(Math.max(page, 1), 100)));
 		url.searchParams.set("per_page", "20");
+		if (sort !== "best-match") {
+			url.searchParams.set("sort", "stars");
+			url.searchParams.set("order", sort === "stars-asc" ? "asc" : "desc");
+		}
 		const headers: Record<string, string> = {
 			Accept: "application/vnd.github+json",
 			"User-Agent": "pi-agent-mobile-os",

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../app_state.dart';
 import '../models.dart';
 import 'connection_screen.dart';
+import 'file_browser_screen.dart';
 import 'task_screen.dart';
 
 class ProjectScreen extends ConsumerStatefulWidget {
@@ -62,6 +63,16 @@ class _ProjectScreenState extends ConsumerState<ProjectScreen> {
               controller: rootController,
               busy: state.busy,
               onAnalyze: controller.analyze,
+              onBrowse: () async {
+                final root = await Navigator.of(context).push<String>(
+                  MaterialPageRoute<String>(
+                    builder: (_) => const RemoteDirectoryPickerScreen(),
+                  ),
+                );
+                if (root == null || !context.mounted) return;
+                rootController.text = root;
+                await controller.analyze(root);
+              },
             )
           else ...[
             _ProjectHeader(project: state.project!),
@@ -161,11 +172,13 @@ class _ProjectSetup extends StatelessWidget {
     required this.controller,
     required this.busy,
     required this.onAnalyze,
+    required this.onBrowse,
   });
 
   final TextEditingController controller;
   final bool busy;
   final Future<void> Function(String root) onAnalyze;
+  final Future<void> Function() onBrowse;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -187,10 +200,27 @@ class _ProjectSetup extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            '可在“文件”页面浏览电脑目录，也可以在这里输入白名单内的绝对路径。',
+            '从 Gateway 授权的目录中选择项目，也可以手动输入绝对路径。',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 20),
+          OutlinedButton.icon(
+            onPressed: busy ? null : onBrowse,
+            icon: const Icon(Icons.folder_open),
+            label: const Text('浏览电脑目录并选择'),
+          ),
+          const SizedBox(height: 12),
+          const Row(
+            children: [
+              Expanded(child: Divider()),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Text('或手动输入'),
+              ),
+              Expanded(child: Divider()),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: controller,
             decoration: const InputDecoration(

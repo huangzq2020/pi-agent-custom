@@ -17,6 +17,7 @@ class _GitHubScreenState extends ConsumerState<GitHubScreen> {
   bool searching = false;
   bool cloning = false;
   String? targetRoot;
+  String sort = 'best-match';
   String? error;
 
   @override
@@ -52,6 +53,28 @@ class _GitHubScreenState extends ConsumerState<GitHubScreen> {
                     icon: const Icon(Icons.search),
                   ),
                 ),
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: sort,
+                decoration: const InputDecoration(
+                  labelText: '搜索结果排序',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(value: 'best-match', child: Text('最佳匹配')),
+                  DropdownMenuItem(
+                    value: 'stars-desc',
+                    child: Text('Star 从高到低'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'stars-asc',
+                    child: Text('Star 从低到高'),
+                  ),
+                ],
+                onChanged: searching
+                    ? null
+                    : (value) => setState(() => sort = value ?? 'best-match'),
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
@@ -155,7 +178,7 @@ class _GitHubScreenState extends ConsumerState<GitHubScreen> {
     try {
       final result = await ref
           .read(mobileControllerProvider.notifier)
-          .searchGitHub(queryController.text.trim());
+          .searchGitHub(queryController.text.trim(), sort: sort);
       if (mounted) setState(() => repositories = result);
     } catch (exception) {
       if (mounted) setState(() => error = '$exception');

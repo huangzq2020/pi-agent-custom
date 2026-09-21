@@ -13,6 +13,8 @@ class ConnectionScreen extends ConsumerStatefulWidget {
 class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   late final TextEditingController urlController;
   late final TextEditingController tokenController;
+  final urlFocusNode = FocusNode();
+  final tokenFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -26,12 +28,26 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
   void dispose() {
     urlController.dispose();
     tokenController.dispose();
+    urlFocusNode.dispose();
+    tokenFocusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(mobileControllerProvider);
+    ref.listen<GatewaySettings>(
+      mobileControllerProvider.select((value) => value.settings),
+      (_, settings) {
+        if (!urlFocusNode.hasFocus && urlController.text != settings.url) {
+          urlController.text = settings.url;
+        }
+        if (!tokenFocusNode.hasFocus &&
+            tokenController.text != settings.token) {
+          tokenController.text = settings.token;
+        }
+      },
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('绑定电脑')),
       body: ListView(
@@ -39,6 +55,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
         children: [
           TextField(
             controller: urlController,
+            focusNode: urlFocusNode,
             keyboardType: TextInputType.url,
             decoration: const InputDecoration(
               labelText: 'Gateway 地址',
@@ -49,6 +66,7 @@ class _ConnectionScreenState extends ConsumerState<ConnectionScreen> {
           const SizedBox(height: 12),
           TextField(
             controller: tokenController,
+            focusNode: tokenFocusNode,
             obscureText: true,
             decoration: const InputDecoration(
               labelText: '绑定令牌',

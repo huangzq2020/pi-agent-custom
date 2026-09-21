@@ -110,6 +110,7 @@ class MobileController extends Notifier<MobileState> {
     } catch (_) {
       // Platform storage is unavailable in widget tests; startup parameters remain valid.
     }
+    state = state.copyWith(settings: settings);
     await connect(settings.url, settings.token, persist: false);
   }
 
@@ -124,15 +125,27 @@ class MobileController extends Notifier<MobileState> {
       );
       return false;
     }
-    state = state.copyWith(connecting: true, clearError: true);
-    final candidate = MobileApiClient(baseUrl: normalized, token: token.trim());
+    final settings = GatewaySettings(url: normalized, token: token.trim());
+    state = state.copyWith(
+      settings: settings,
+      connecting: true,
+      clearError: true,
+    );
+    final candidate = MobileApiClient(
+      baseUrl: normalized,
+      token: settings.token,
+    );
     try {
+      if (persist) {
+        await _connectionStore.write(
+          StoredConnection(url: settings.url, token: settings.token),
+        );
+      }
       final device = await candidate.getDevice().timeout(
         const Duration(seconds: 8),
       );
       _api.close();
       _api = candidate;
-      final settings = GatewaySettings(url: normalized, token: token.trim());
       state = state.copyWith(
         settings: settings,
         device: device,
@@ -141,11 +154,6 @@ class MobileController extends Notifier<MobileState> {
         clearProject: true,
         clearError: true,
       );
-      if (persist) {
-        await _connectionStore.write(
-          StoredConnection(url: normalized, token: token.trim()),
-        );
-      }
       await loadHistory();
       return true;
     } catch (error) {
@@ -237,8 +245,19 @@ class MobileController extends Notifier<MobileState> {
   Future<RemoteFileContent> previewRemoteFile(String path) =>
       _api.previewRemoteFile(path);
 
-  Future<List<GitHubRepository>> searchGitHub(String query) =>
-      _api.searchGitHub(query);
+  Future<void> createRemoteDirectory(String parent, String name) =>
+      _api.createRemoteDirectory(parent, name);
+
+  Future<void> renameRemoteEntry(String path, String name) =>
+      _api.renameRemoteEntry(path, name);
+
+  Future<void> deleteRemoteDirectory(String path) =>
+      _api.deleteRemoteDirectory(path);
+
+  Future<List<GitHubRepository>> searchGitHub(
+    String query, {
+    String sort = 'best-match',
+  }) => _api.searchGitHub(query, sort: sort);
 
   void _applyAnalysis(AnalysisResult analysis) {
     state = state.copyWith(

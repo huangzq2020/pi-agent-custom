@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import { WebSocketServer } from "ws";
 import type { CapabilityEngine } from "./capability-engine.ts";
-import type { GitHubService } from "./github-service.ts";
+import type { GitHubSearchSort, GitHubService } from "./github-service.ts";
 import type { MarketplaceRegistry } from "./marketplace/registry.ts";
 import type { ProjectPathPolicy } from "./path-policy.ts";
 import type { ProjectAnalyzer } from "./project-analyzer.ts";
@@ -124,9 +124,41 @@ export class MobileGateway {
 			this.json(response, 200, await this.options.files.preview(requiredQuery(url, "path")));
 			return;
 		}
+		if (request.method === "POST" && url.pathname === "/v1/files/directories") {
+			const body = await readJsonBody(request);
+			this.json(
+				response,
+				201,
+				await this.options.files.createDirectory(requiredString(body, "parent"), requiredString(body, "name")),
+			);
+			return;
+		}
+		if (request.method === "POST" && url.pathname === "/v1/files/rename") {
+			const body = await readJsonBody(request);
+			this.json(
+				response,
+				200,
+				await this.options.files.rename(requiredString(body, "path"), requiredString(body, "name")),
+			);
+			return;
+		}
+		if (request.method === "POST" && url.pathname === "/v1/files/delete-directory") {
+			const body = await readJsonBody(request);
+			await this.options.files.deleteDirectory(requiredString(body, "path"));
+			this.json(response, 200, { deleted: true });
+			return;
+		}
 		if (request.method === "GET" && url.pathname === "/v1/github/search") {
 			const page = Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1;
-			this.json(response, 200, await this.options.github.search(requiredQuery(url, "q"), page));
+			this.json(
+				response,
+				200,
+				await this.options.github.search(
+					requiredQuery(url, "q"),
+					page,
+					parseGitHubSort(url.searchParams.get("sort")),
+				),
+			);
 			return;
 		}
 		if (request.method === "POST" && url.pathname === "/v1/github/clone") {
@@ -298,6 +330,13 @@ function requiredString(body: Record<string, unknown>, key: string): string {
 
 function optionalString(value: unknown): string | undefined {
 	return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+}
+
+function parseGitHubSort(value: string | null): GitHubSearchSort {
+	if (value === null || value === "best-match" || value === "stars-asc" || value === "stars-desc") {
+		return value ?? "best-match";
+	}
+	throw new Error("GitHub sort must be best-match, stars-asc, or stars-desc");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

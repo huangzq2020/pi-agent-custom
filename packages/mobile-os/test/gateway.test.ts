@@ -119,6 +119,46 @@ steps:
 			`/v1/files/content?path=${encodeURIComponent(join(root, "package.json"))}`,
 		);
 		expect(asRecord(await previewResponse.json()).content).toContain("fixture");
+
+		const createResponse = await apiFetch("/v1/files/directories", {
+			method: "POST",
+			body: JSON.stringify({ parent: root, name: "created" }),
+		});
+		expect(createResponse.status).toBe(201);
+		const escapedCreateResponse = await apiFetch("/v1/files/directories", {
+			method: "POST",
+			body: JSON.stringify({ parent: root, name: "../escaped" }),
+		});
+		expect(escapedCreateResponse.status).toBe(400);
+
+		const renameDirectoryResponse = await apiFetch("/v1/files/rename", {
+			method: "POST",
+			body: JSON.stringify({ path: join(root, "created"), name: "renamed" }),
+		});
+		expect(asRecord(await renameDirectoryResponse.json()).path).toBe(join(root, "renamed"));
+
+		await writeFile(join(root, "renamed", "before.txt"), "renamed content");
+		const renameFileResponse = await apiFetch("/v1/files/rename", {
+			method: "POST",
+			body: JSON.stringify({ path: join(root, "renamed", "before.txt"), name: "after.txt" }),
+		});
+		expect(asRecord(await renameFileResponse.json()).path).toBe(join(root, "renamed", "after.txt"));
+
+		const deleteRootResponse = await apiFetch("/v1/files/delete-directory", {
+			method: "POST",
+			body: JSON.stringify({ path: root }),
+		});
+		expect(deleteRootResponse.status).toBe(400);
+
+		const deleteResponse = await apiFetch("/v1/files/delete-directory", {
+			method: "POST",
+			body: JSON.stringify({ path: join(root, "renamed") }),
+		});
+		expect(deleteResponse.status).toBe(200);
+		const refreshedFiles = asRecord(await (await apiFetch(`/v1/files?path=${encodeURIComponent(root)}`)).json());
+		expect((refreshedFiles.entries as Array<Record<string, unknown>>).map((entry) => entry.name)).not.toContain(
+			"renamed",
+		);
 	});
 
 	function apiFetch(path: string, init?: RequestInit): Promise<Response> {

@@ -1,5 +1,5 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, readFile, rename as renamePath, rm, stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type { ProjectPathPolicy } from "./path-policy.ts";
 import type { RemoteDirectory, RemoteFileEntry } from "./types.ts";
 
@@ -59,4 +59,44 @@ export class RemoteFileService {
 		if (sample.includes(0)) throw new Error("Binary files cannot be previewed as text");
 		return { path: file, content: sample.toString("utf8"), truncated: metadata.size > maxPreviewBytes };
 	}
+
+	async createDirectory(parent: string, name: string): Promise<{ path: string }> {
+		const directory = await this.pathPolicy.resolveDirectory(parent);
+		const destination = join(directory, validName(name));
+		await mkdir(destination);
+		return { path: await this.pathPolicy.resolveDirectory(destination) };
+	}
+
+	async rename(path: string, name: string): Promise<{ path: string }> {
+		const source = await this.pathPolicy.resolveProjectRoot(path);
+		this.requireMutablePath(source);
+		const destination = join(dirname(source), validName(name));
+		try {
+			await stat(destination);
+			throw new Error(`Destination already exists: ${destination}`);
+		} catch (error) {
+			if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+		}
+		await renamePath(source, destination);
+		return { path: await this.pathPolicy.resolveProjectRoot(destination) };
+	}
+
+	async deleteDirectory(path: string): Promise<void> {
+		const directory = await this.pathPolicy.resolveDirectory(path);
+		this.requireMutablePath(directory);
+		await rm(directory, { recursive: true });
+	}
+
+	private requireMutablePath(path: string): void {
+		if (this.pathPolicy.roots.includes(path))
+			throw new Error("Authorized root directories cannot be renamed or deleted");
+	}
+}
+
+function validName(value: string): string {
+	const name = value.trim();
+	if (!name || name === "." || name === ".." || basename(name) !== name) {
+		throw new Error("File or directory name is invalid");
+	}
+	return name;
 }
