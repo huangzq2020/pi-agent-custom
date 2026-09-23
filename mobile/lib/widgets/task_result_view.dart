@@ -39,7 +39,7 @@ class TaskResultView extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: report == null || report.trim().isEmpty
                 ? const Text('任务已完成，但没有可显示的文本报告。')
-                : _MarkdownDocument(source: _normalizeAgentText(report)),
+                : AgentMarkdownView(source: report),
           ),
         ),
         if (steps.isNotEmpty) ...[
@@ -192,14 +192,14 @@ class _StepRow extends StatelessWidget {
   }
 }
 
-class _MarkdownDocument extends StatelessWidget {
-  const _MarkdownDocument({required this.source});
+class AgentMarkdownView extends StatelessWidget {
+  const AgentMarkdownView({super.key, required this.source});
 
   final String source;
 
   @override
   Widget build(BuildContext context) {
-    final lines = source.split('\n');
+    final lines = _normalizeAgentText(source).split('\n');
     final blocks = <Widget>[];
     var index = 0;
     while (index < lines.length) {

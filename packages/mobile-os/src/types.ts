@@ -109,9 +109,16 @@ export interface CreateTaskRequest {
 	workflowId?: string;
 }
 
+export interface ConversationMessage {
+	role: "user" | "assistant";
+	text: string;
+	createdAt: string;
+}
+
 export interface TaskSnapshot {
 	id: string;
 	projectId: string;
+	projectRoot?: string;
 	projectName: string;
 	title: string;
 	kind: TaskKind;
@@ -125,6 +132,7 @@ export interface TaskSnapshot {
 	result?: unknown;
 	changeGraph?: ChangeGraph;
 	error?: string;
+	messages?: ConversationMessage[];
 }
 
 export interface GatewayDevice {
@@ -173,6 +181,7 @@ export interface RuntimeRequest {
 	prompt: string;
 	readOnly: boolean;
 	signal: AbortSignal;
+	sessionId?: string;
 }
 
 export type RuntimeEvent =

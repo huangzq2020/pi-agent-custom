@@ -229,6 +229,18 @@ export class MobileGateway {
 			this.json(response, 202, { task });
 			return;
 		}
+		const messageMatch = url.pathname.match(/^\/v1\/tasks\/([^/]+)\/messages$/);
+		if (request.method === "POST" && messageMatch) {
+			const taskId = decodeURIComponent(messageMatch[1]);
+			const snapshot = this.options.tasks.get(taskId);
+			if (!snapshot) throw new NotFoundError("Task not found");
+			const project = await this.restoreTaskProject(snapshot);
+			const eventCursor = this.options.tasks.lastEventSequence(taskId);
+			const body = await readJsonBody(request);
+			const task = this.options.tasks.continueChat(taskId, requiredString(body, "prompt"), project);
+			this.json(response, 202, { task, eventCursor });
+			return;
+		}
 		if (request.method === "GET" && url.pathname === "/v1/tasks") {
 			this.json(response, 200, { tasks: this.options.tasks.list(url.searchParams.get("projectId") ?? undefined) });
 			return;
@@ -259,6 +271,17 @@ export class MobileGateway {
 	private requireProject(id: string): ProjectProfile {
 		const project = this.options.projects.get(id);
 		if (!project) throw new NotFoundError("Project not found");
+		return project;
+	}
+
+	private async restoreTaskProject(task: { projectId: string; projectRoot?: string }): Promise<ProjectProfile> {
+		const existing = this.options.projects.get(task.projectId);
+		if (existing) return existing;
+		if (!task.projectRoot) throw new NotFoundError("Conversation project is no longer available");
+		const root = await this.options.pathPolicy.resolveProjectRoot(task.projectRoot);
+		const project = await this.options.analyzer.analyze(root);
+		if (project.id !== task.projectId) throw new Error("Conversation project no longer matches its saved path");
+		this.options.projects.set(project);
 		return project;
 	}
 

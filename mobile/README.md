@@ -1,6 +1,8 @@
 # Pi-Agent Mobile OS App
 
-Flutter client for the Pi-Agent Mobile OS gateway. It provides encrypted computer binding, separate phone and remote-computer file browsers, GitHub search and clone, project summaries, server-driven capabilities, detailed analysis, natural-language tasks, durable conversation history, live progress, cancellation, structured results, and a code-change graph.
+Flutter client for the Pi-Agent Mobile OS gateway. It provides encrypted computer binding, separate phone and remote-computer file browsers, GitHub search and clone, project summaries, server-driven capabilities, detailed analysis, multi-turn natural-language conversations, durable conversation history, live progress, cancellation, structured results, and a code-change graph.
+
+Open a completed chat from the task history and use the composer at the bottom to continue it. Follow-up messages reuse the same persistent Pi session, so the model retains earlier messages, tool calls, and compacted context across Gateway restarts.
 
 ## Bootstrap platform files
 

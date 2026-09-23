@@ -13,6 +13,13 @@ class AnalysisResult {
   final List<Capability> capabilities;
 }
 
+class TaskContinuation {
+  const TaskContinuation({required this.task, required this.eventCursor});
+
+  final TaskSnapshot task;
+  final int eventCursor;
+}
+
 class RemoteFileContent {
   const RemoteFileContent({
     required this.path,
@@ -127,6 +134,19 @@ class MobileApiClient {
 
   Future<TaskSnapshot> createChatTask(String projectId, String prompt) =>
       _createTask({'projectId': projectId, 'kind': 'chat', 'prompt': prompt});
+
+  Future<TaskContinuation> continueChatTask(
+    String taskId,
+    String prompt,
+  ) async {
+    final body = await _request('POST', '/v1/tasks/$taskId/messages', {
+      'prompt': prompt,
+    });
+    return TaskContinuation(
+      task: TaskSnapshot.fromJson(body['task']! as Map<String, Object?>),
+      eventCursor: body['eventCursor']! as int,
+    );
+  }
 
   Future<TaskSnapshot> getTask(String taskId) async {
     final body = await _request('GET', '/v1/tasks/$taskId');

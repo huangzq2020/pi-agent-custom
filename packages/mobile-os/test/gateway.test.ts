@@ -102,6 +102,25 @@ steps:
 
 		expect(events.map((event) => event.type)).toContain("agent_delta");
 		expect(events.some((event) => asRecord(event.data).status === "SUCCESS")).toBe(true);
+
+		const continuationResponse = await apiFetch(`/v1/tasks/${taskId}/messages`, {
+			method: "POST",
+			body: JSON.stringify({ prompt: "follow up" }),
+		});
+		expect(continuationResponse.status).toBe(202);
+		const continuation = asRecord(await continuationResponse.json());
+		const eventCursor = continuation.eventCursor as number;
+		const followUpEvents = await collectUntilSuccess(`${websocketUrl}&after=${eventCursor}`);
+		expect(followUpEvents.map((event) => event.type)).toContain("agent_delta");
+
+		const task = asRecord(asRecord(await (await apiFetch(`/v1/tasks/${taskId}`)).json()).task);
+		const messages = task.messages as Array<Record<string, unknown>>;
+		expect(messages.map(({ role, text }) => ({ role, text }))).toEqual([
+			{ role: "user", text: "hello" },
+			{ role: "assistant", text: "ok" },
+			{ role: "user", text: "follow up" },
+			{ role: "assistant", text: "ok" },
+		]);
 	});
 
 	it("returns the bound computer and browses authorized files", async () => {

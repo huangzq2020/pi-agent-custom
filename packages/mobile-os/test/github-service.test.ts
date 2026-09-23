@@ -26,4 +26,39 @@ describe("GitHubService", () => {
 		expect(requestUrl.searchParams.get("sort")).toBe("stars");
 		expect(requestUrl.searchParams.get("order")).toBe("desc");
 	});
+
+	it("reads a UTF-8 repository file at a requested ref", async () => {
+		root = await mkdtemp(join(tmpdir(), "pi-mobile-github-file-"));
+		const content = "export const answer = 42;\n";
+		const fetchMock = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) =>
+			Response.json({
+				type: "file",
+				path: "src/answer file.ts",
+				sha: "abc123",
+				size: Buffer.byteLength(content),
+				html_url: "https://github.com/owner/repository/blob/feature/test/src/answer%20file.ts",
+				encoding: "base64",
+				content: Buffer.from(content).toString("base64"),
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const file = await new GitHubService(new ProjectPathPolicy([root]), "github-token").readFile(
+			"owner",
+			"repository",
+			"src/answer file.ts",
+			"feature/test",
+		);
+
+		const requestUrl = new URL(String(fetchMock.mock.calls[0]?.[0]));
+		expect(requestUrl.pathname).toBe("/repos/owner/repository/contents/src/answer%20file.ts");
+		expect(requestUrl.searchParams.get("ref")).toBe("feature/test");
+		expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ Authorization: "Bearer github-token" });
+		expect(file).toMatchObject({
+			repository: "owner/repository",
+			path: "src/answer file.ts",
+			ref: "feature/test",
+			content,
+		});
+	});
 });

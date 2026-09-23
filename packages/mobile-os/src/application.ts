@@ -12,6 +12,11 @@ import { ProjectCatalog } from "./project-catalog.ts";
 import { updateProjectInsights } from "./project-insight-updater.ts";
 import { RemoteFileService } from "./remote-files.ts";
 import { createMobileContextExtension, RuntimeExtensionHost } from "./runtime/extensions.ts";
+import {
+	createGitHubAgentTools,
+	githubReadFileToolName,
+	githubSearchRepositoriesToolName,
+} from "./runtime/github-agent-tools.ts";
 import { PiAgentRuntimeAdapter } from "./runtime/pi-agent-adapter.ts";
 import { TaskHistoryStore } from "./task-history-store.ts";
 import { TaskManager } from "./task-manager.ts";
@@ -33,12 +38,18 @@ export interface CreateMobileOsOptions {
 }
 
 export async function createMobileOs(options: CreateMobileOsOptions = {}): Promise<MobileGateway> {
+	const dataDirectory = options.dataDirectory ?? join(homedir(), ".pi", "mobile-os");
 	const analyzer = new ProjectAnalyzer();
 	const projects = new ProjectCatalog();
 	const pathPolicy = new ProjectPathPolicy(options.projectRoots ?? [process.cwd()]);
+	const github = new GitHubService(pathPolicy, options.githubToken);
 	const workflows = new WorkflowRegistry();
 	await workflows.loadDirectory(options.workflowDirectory ?? fileURLToPath(new URL("../workflows", import.meta.url)));
-	const runtime = new PiAgentRuntimeAdapter();
+	const runtime = new PiAgentRuntimeAdapter({
+		sessionDirectory: join(dataDirectory, "sessions"),
+		customTools: createGitHubAgentTools(github),
+		readOnlyCustomToolNames: [githubSearchRepositoriesToolName, githubReadFileToolName],
+	});
 	const extensions = new RuntimeExtensionHost();
 	extensions.register(createMobileContextExtension());
 	const tools = new Map<string, WorkflowTool>([
@@ -57,9 +68,7 @@ export async function createMobileOs(options: CreateMobileOsOptions = {}): Promi
 		["git_change_graph", async (_input, context) => buildChangeGraph(context.project.root)],
 	]);
 	const executor = new WorkflowExecutor({ runtime, extensions, tools });
-	const history = await TaskHistoryStore.open(
-		join(options.dataDirectory ?? join(homedir(), ".pi", "mobile-os"), "tasks.json"),
-	);
+	const history = await TaskHistoryStore.open(join(dataDirectory, "tasks.json"));
 	const tasks = new TaskManager({
 		runtime,
 		extensions,
@@ -95,6 +104,6 @@ export async function createMobileOs(options: CreateMobileOsOptions = {}): Promi
 			roots: pathPolicy.roots,
 		},
 		files: new RemoteFileService(pathPolicy),
-		github: new GitHubService(pathPolicy, options.githubToken),
+		github,
 	});
 }

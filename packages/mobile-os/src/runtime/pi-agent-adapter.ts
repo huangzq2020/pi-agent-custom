@@ -1,16 +1,43 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import type { AgentRuntime, RuntimeRequest, RuntimeResult } from "../types.ts";
 
 const readOnlyTools = ["read", "grep", "find", "ls"];
 
+export interface PiAgentRuntimeAdapterOptions {
+	sessionDirectory?: string;
+	customTools?: ToolDefinition[];
+	readOnlyCustomToolNames?: string[];
+}
+
 export class PiAgentRuntimeAdapter implements AgentRuntime {
+	readonly #sessionDirectory: string;
+	readonly #customTools: ToolDefinition[];
+	readonly #readOnlyCustomToolNames: string[];
+
+	constructor(options: PiAgentRuntimeAdapterOptions = {}) {
+		this.#sessionDirectory = options.sessionDirectory ?? join(homedir(), ".pi", "mobile-os", "sessions");
+		this.#customTools = [...(options.customTools ?? [])];
+		this.#readOnlyCustomToolNames = [...(options.readOnlyCustomToolNames ?? [])];
+	}
+
 	async run(request: RuntimeRequest, onEvent: Parameters<AgentRuntime["run"]>[1]): Promise<RuntimeResult> {
 		if (request.signal.aborted) throw request.signal.reason;
 		let suppressTextEvents = false;
+		const sessionManager = request.sessionId
+			? SessionManager.open(
+					join(this.#sessionDirectory, `${validSessionId(request.sessionId)}.jsonl`),
+					this.#sessionDirectory,
+					request.cwd,
+				)
+			: SessionManager.inMemory(request.cwd);
 		const { session } = await createAgentSession({
 			cwd: request.cwd,
-			tools: request.readOnly ? readOnlyTools : undefined,
-			sessionManager: SessionManager.inMemory(request.cwd),
+			tools: request.readOnly ? [...readOnlyTools, ...this.#readOnlyCustomToolNames] : undefined,
+			customTools: this.#customTools,
+			sessionManager,
 		});
 		const unsubscribe = session.subscribe((event) => {
 			if (
@@ -56,6 +83,13 @@ export class PiAgentRuntimeAdapter implements AgentRuntime {
 			session.dispose();
 		}
 	}
+}
+
+function validSessionId(value: string): string {
+	if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(value)) {
+		throw new Error("Mobile conversation session id is invalid");
+	}
+	return value;
 }
 
 export function needsChineseRewrite(text: string): boolean {

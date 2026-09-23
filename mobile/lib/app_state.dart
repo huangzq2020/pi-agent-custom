@@ -208,6 +208,26 @@ class MobileController extends Notifier<MobileState> {
     return _start(() => _api.createChatTask(project.id, prompt.trim()));
   }
 
+  Future<TaskSnapshot?> sendFollowUp(String prompt) async {
+    final task = state.task;
+    if (task == null || task.kind != 'chat' || !task.isDone) return null;
+    final cleanPrompt = prompt.trim();
+    if (cleanPrompt.isEmpty) return null;
+    await _events?.cancel();
+    _poller?.cancel();
+    state = state.copyWith(busy: true, liveText: '', clearError: true);
+    try {
+      final continuation = await _api.continueChatTask(task.id, cleanPrompt);
+      state = state.copyWith(task: continuation.task, busy: false);
+      _subscribe(continuation.task, after: continuation.eventCursor);
+      await loadHistory();
+      return continuation.task;
+    } catch (error) {
+      state = state.copyWith(busy: false, error: '$error');
+      return null;
+    }
+  }
+
   Future<void> openTask(String taskId) async {
     await _events?.cancel();
     _poller?.cancel();
@@ -284,9 +304,9 @@ class MobileController extends Notifier<MobileState> {
     }
   }
 
-  void _subscribe(TaskSnapshot task) {
+  void _subscribe(TaskSnapshot task, {int after = 0}) {
     _events = _api
-        .taskEvents(task.id)
+        .taskEvents(task.id, after: after)
         .listen(
           _onEvent,
           onError: (_) => _startPolling(task.id),
@@ -314,7 +334,10 @@ class MobileController extends Notifier<MobileState> {
       final task = TaskSnapshot.fromJson(
         data['snapshot']! as Map<String, Object?>,
       );
-      state = state.copyWith(task: task);
+      state = state.copyWith(
+        task: task,
+        liveText: task.status == 'SUCCESS' ? '' : null,
+      );
       if (task.isDone) {
         _poller?.cancel();
         unawaited(_refreshProject(task.projectId));
@@ -329,7 +352,10 @@ class MobileController extends Notifier<MobileState> {
   Future<void> _refresh(String taskId) async {
     try {
       final task = await _api.getTask(taskId);
-      state = state.copyWith(task: task);
+      state = state.copyWith(
+        task: task,
+        liveText: task.status == 'SUCCESS' ? '' : null,
+      );
       if (task.isDone) {
         _poller?.cancel();
         await _refreshProject(task.projectId);

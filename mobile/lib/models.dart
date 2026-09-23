@@ -225,6 +225,25 @@ class ChangeGraph {
   final List<ChangeEdge> edges;
 }
 
+class ConversationMessage {
+  const ConversationMessage({
+    required this.role,
+    required this.text,
+    required this.createdAt,
+  });
+
+  factory ConversationMessage.fromJson(Map<String, Object?> json) =>
+      ConversationMessage(
+        role: json['role']! as String,
+        text: json['text']! as String,
+        createdAt: DateTime.parse(json['createdAt']! as String).toLocal(),
+      );
+
+  final String role;
+  final String text;
+  final DateTime createdAt;
+}
+
 class TaskSnapshot {
   const TaskSnapshot({
     required this.id,
@@ -241,6 +260,7 @@ class TaskSnapshot {
     this.result,
     this.error,
     this.changeGraph,
+    this.messages = const [],
   });
 
   factory TaskSnapshot.fromJson(Map<String, Object?> json) => TaskSnapshot(
@@ -261,6 +281,9 @@ class TaskSnapshot {
     changeGraph: json['changeGraph'] is Map<String, Object?>
         ? ChangeGraph.fromJson(json['changeGraph']! as Map<String, Object?>)
         : null,
+    messages: objectList(
+      json['messages'],
+    ).map(ConversationMessage.fromJson).toList(),
   );
 
   final String id;
@@ -277,6 +300,7 @@ class TaskSnapshot {
   final Object? result;
   final String? error;
   final ChangeGraph? changeGraph;
+  final List<ConversationMessage> messages;
 
   bool get isDone => const {'SUCCESS', 'FAILED', 'CANCELLED'}.contains(status);
 }

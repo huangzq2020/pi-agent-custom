@@ -3,6 +3,7 @@ import type { RuntimeExtensionHost } from "./runtime/extensions.ts";
 import type { TaskHistoryStore } from "./task-history-store.ts";
 import type {
 	AgentRuntime,
+	ConversationMessage,
 	CreateTaskRequest,
 	ProjectProfile,
 	RuntimeEvent,
@@ -53,6 +54,7 @@ export class TaskManager {
 		const snapshot: TaskSnapshot = {
 			id: randomUUID(),
 			projectId: project.id,
+			projectRoot: project.root,
 			projectName: project.name,
 			title: taskTitle(request, this.options.workflows),
 			kind: request.kind,
@@ -62,12 +64,47 @@ export class TaskManager {
 			prompt: request.prompt,
 			workflowId: request.workflowId,
 			progress: 0,
+			messages:
+				request.kind === "chat"
+					? [{ role: "user", text: request.prompt?.trim() ?? "", createdAt: now }]
+					: undefined,
 		};
 		this.#tasks.set(snapshot.id, { snapshot, project, controller: new AbortController() });
 		this.#events.set(snapshot.id, []);
 		this.options.history?.save(snapshot);
 		this.emit(snapshot.id, "snapshot", clone(snapshot));
 		this.#queue.push(snapshot.id);
+		queueMicrotask(() => this.pump());
+		return clone(snapshot);
+	}
+
+	continueChat(id: string, prompt: string, project: ProjectProfile): TaskSnapshot {
+		const cleanPrompt = prompt.trim();
+		if (!cleanPrompt) throw new Error("Chat messages require a prompt");
+		const existing = this.#tasks.get(id);
+		const snapshot = existing?.snapshot ?? this.options.history?.get(id);
+		if (!snapshot) throw new Error(`Task not found: ${id}`);
+		if (snapshot.kind !== "chat") throw new Error("Only chat tasks can receive follow-up messages");
+		if (!isTerminal(snapshot.status)) throw new Error("The conversation is still running");
+		if (snapshot.projectId !== project.id) throw new Error("Conversation project does not match");
+
+		snapshot.messages = conversationMessages(snapshot);
+		snapshot.messages.push({ role: "user", text: cleanPrompt, createdAt: new Date().toISOString() });
+		snapshot.projectRoot = project.root;
+		snapshot.projectName = project.name;
+		snapshot.status = "CREATED";
+		snapshot.updatedAt = new Date().toISOString();
+		snapshot.progress = 0;
+		snapshot.currentStep = undefined;
+		snapshot.result = undefined;
+		snapshot.changeGraph = undefined;
+		snapshot.error = undefined;
+
+		this.#tasks.set(id, { snapshot, project, controller: new AbortController() });
+		this.#events.set(id, this.#events.get(id) ?? []);
+		this.options.history?.save(snapshot);
+		this.emit(id, "snapshot", clone(snapshot));
+		this.#queue.push(id);
 		queueMicrotask(() => this.pump());
 		return clone(snapshot);
 	}
@@ -92,6 +129,10 @@ export class TaskManager {
 
 	events(id: string, afterSequence = 0): TaskEvent[] {
 		return (this.#events.get(id) ?? []).filter((event) => event.sequence > afterSequence).map(clone);
+	}
+
+	lastEventSequence(id: string): number {
+		return this.#events.get(id)?.at(-1)?.sequence ?? 0;
 	}
 
 	subscribe(id: string, listener: TaskListener): () => void {
@@ -133,11 +174,25 @@ export class TaskManager {
 			await this.options.extensions.beforeTask(runtimeContext);
 			let result: unknown;
 			if (snapshot.kind === "chat") {
-				const prompt = await this.options.extensions.transformPrompt(snapshot.prompt ?? "", runtimeContext);
-				result = await this.options.runtime.run(
-					{ cwd: project.root, prompt, readOnly: false, signal: controller.signal },
+				const currentPrompt = snapshot.messages?.at(-1)?.text ?? snapshot.prompt ?? "";
+				const transformedPrompt = await this.options.extensions.transformPrompt(currentPrompt, runtimeContext);
+				const runtimeResult = await this.options.runtime.run(
+					{
+						cwd: project.root,
+						prompt: transformedPrompt,
+						readOnly: false,
+						signal: controller.signal,
+						sessionId: snapshot.id,
+					},
 					(event) => this.onRuntimeEvent(snapshot, runtimeContext, event),
 				);
+				result = runtimeResult;
+				snapshot.messages ??= [];
+				snapshot.messages.push({
+					role: "assistant",
+					text: runtimeResult.text,
+					createdAt: new Date().toISOString(),
+				});
 			} else {
 				const workflow = this.options.workflows.get(snapshot.workflowId ?? "");
 				if (!workflow) throw new Error(`Workflow not found: ${snapshot.workflowId}`);
@@ -230,6 +285,24 @@ export class TaskManager {
 		this.#events.set(id, history);
 		for (const listener of this.#listeners.get(id) ?? []) listener(clone(event));
 	}
+}
+
+function conversationMessages(snapshot: TaskSnapshot): ConversationMessage[] {
+	if (snapshot.messages) return [...snapshot.messages];
+	const messages: ConversationMessage[] = [];
+	if (snapshot.prompt) messages.push({ role: "user", text: snapshot.prompt, createdAt: snapshot.createdAt });
+	if (isRecord(snapshot.result) && typeof snapshot.result.text === "string") {
+		messages.push({ role: "assistant", text: snapshot.result.text, createdAt: snapshot.updatedAt });
+	}
+	return messages;
+}
+
+function isTerminal(status: TaskSnapshot["status"]): boolean {
+	return status === "SUCCESS" || status === "FAILED" || status === "CANCELLED";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function taskTitle(request: CreateTaskRequest, workflows: WorkflowRegistry): string {

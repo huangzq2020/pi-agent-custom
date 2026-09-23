@@ -9,7 +9,7 @@ Flutter app
   ├─ encrypted computer binding and local/remote file browsers
   ├─ GitHub repository search and clone-to-computer
   ├─ project summary, technology analysis, and detailed analysis
-  ├─ natural-language Agent tasks
+  ├─ multi-turn natural-language Agent conversations
   ├─ persistent conversation/task history
   ├─ workflow tasks, WebSocket status with polling fallback, cancellation, and results
   └─ code-change graph
@@ -21,7 +21,7 @@ Mobile Gateway
   ├─ authorized remote file browser and text preview
   ├─ GitHub repository search and constrained shallow clone
   ├─ in-process concurrent task queue
-  ├─ durable task history under ~/.pi/mobile-os
+  ├─ durable task history and Pi sessions under ~/.pi/mobile-os
   ├─ YAML DAG workflow engine
   ├─ local workflow marketplace registry
   ├─ Git change graph generator
@@ -29,6 +29,9 @@ Mobile Gateway
           │ createAgentSession()
           ▼
 Pi-Agent Runtime
+  ├─ persistent JSONL session per mobile conversation
+  ├─ automatic context compaction near the model limit
+  ├─ read-only GitHub repository search and file-reading tools
   └─ read/write/edit/bash or read-only tool policy per workflow step
 ```
 
@@ -78,6 +81,7 @@ All endpoints except health require `Authorization: Bearer <token>` when a token
 | `GET` | `/v1/projects/:id/capabilities` | Return project-specific workflow buttons. |
 | `GET` | `/v1/workflows` | List registered workflow definitions. |
 | `POST` | `/v1/tasks` | Create a chat or workflow task. |
+| `POST` | `/v1/tasks/:id/messages` | Continue a completed chat in the same Pi session. |
 | `GET` | `/v1/tasks/:id` | Read a task snapshot and result. |
 | `POST` | `/v1/tasks/:id/cancel` | Cancel queued or active work. |
 | `GET` | `/v1/tasks/:id/events?after=N` | Replay events after a sequence number. |
@@ -90,6 +94,16 @@ Task request examples:
 ```json
 { "projectId": "...", "kind": "chat", "prompt": "优化登录模块" }
 ```
+
+Continue the same conversation after it completes:
+
+```json
+{ "prompt": "继续检查刚才提到的登录测试" }
+```
+
+Mobile conversation messages are stored in `tasks.json` for UI history. Pi's complete model context, including tool calls and compaction summaries, is stored separately in `sessions/<task-id>.jsonl` under `PI_MOBILE_DATA_DIR`.
+
+Agent conversations can call `github_search_repositories` to search repositories, use GitHub qualifiers, paginate results, and order them by star count. They can call `github_read_file` with an owner, repository, path, and optional branch, tag, or commit SHA to read UTF-8 source files without cloning. Repository cloning remains an explicit App/Gateway operation because it writes to the computer filesystem.
 
 ```json
 { "projectId": "...", "kind": "workflow", "workflowId": "security_check" }

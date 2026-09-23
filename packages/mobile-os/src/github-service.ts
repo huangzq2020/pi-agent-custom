@@ -1,10 +1,24 @@
+import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { basename } from "node:path";
+import { TextDecoder } from "node:util";
 import type { ProjectPathPolicy } from "./path-policy.ts";
 import type { GitHubRepository } from "./types.ts";
 
 export type GitHubSearchSort = "best-match" | "stars-asc" | "stars-desc";
+
+export interface GitHubFileContent {
+	repository: string;
+	path: string;
+	ref?: string;
+	sha: string;
+	size: number;
+	htmlUrl: string;
+	content: string;
+}
+
+const maxGitHubFileBytes = 1024 * 1024;
 
 export class GitHubService {
 	private readonly pathPolicy: ProjectPathPolicy;
@@ -19,6 +33,7 @@ export class GitHubService {
 		query: string,
 		page = 1,
 		sort: GitHubSearchSort = "best-match",
+		signal?: AbortSignal,
 	): Promise<{ total: number; repositories: GitHubRepository[] }> {
 		const cleanQuery = query.trim();
 		if (!cleanQuery) throw new Error("GitHub search query is required");
@@ -31,19 +46,75 @@ export class GitHubService {
 			url.searchParams.set("sort", "stars");
 			url.searchParams.set("order", sort === "stars-asc" ? "asc" : "desc");
 		}
-		const headers: Record<string, string> = {
-			Accept: "application/vnd.github+json",
-			"User-Agent": "pi-agent-mobile-os",
-			"X-GitHub-Api-Version": "2022-11-28",
-		};
-		if (this.token) headers.Authorization = `Bearer ${this.token}`;
-		const response = await fetch(url, { headers });
+		const response = await fetch(url, { headers: this.requestHeaders(), signal });
 		const body: unknown = await response.json();
 		if (!response.ok) throw new Error(githubError(body, response.status));
 		if (!isRecord(body) || !Array.isArray(body.items)) throw new Error("GitHub returned an invalid response");
 		return {
 			total: typeof body.total_count === "number" ? body.total_count : 0,
 			repositories: body.items.map(parseRepository),
+		};
+	}
+
+	async readFile(
+		owner: string,
+		repository: string,
+		path: string,
+		ref?: string,
+		signal?: AbortSignal,
+	): Promise<GitHubFileContent> {
+		const cleanOwner = owner.trim();
+		const cleanRepository = repository.trim();
+		const cleanPath = path.trim();
+		if (!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(cleanOwner)) {
+			throw new Error("GitHub repository owner is invalid");
+		}
+		if (!/^[A-Za-z0-9_.-]{1,100}$/.test(cleanRepository)) {
+			throw new Error("GitHub repository name is invalid");
+		}
+		const pathSegments = cleanPath.split("/");
+		if (
+			cleanPath.length === 0 ||
+			cleanPath.length > 1024 ||
+			pathSegments.some((segment) => segment.length === 0 || segment === "." || segment === "..")
+		) {
+			throw new Error("GitHub file path is invalid");
+		}
+		const cleanRef = ref?.trim();
+		if (ref !== undefined && (!cleanRef || cleanRef.length > 255)) {
+			throw new Error("GitHub ref is invalid");
+		}
+		const encodedPath = pathSegments.map((segment) => encodeURIComponent(segment)).join("/");
+		const url = new URL(
+			`https://api.github.com/repos/${encodeURIComponent(cleanOwner)}/${encodeURIComponent(cleanRepository)}/contents/${encodedPath}`,
+		);
+		if (cleanRef) url.searchParams.set("ref", cleanRef);
+		const response = await fetch(url, { headers: this.requestHeaders(), signal });
+		const body: unknown = await response.json();
+		if (!response.ok) throw new Error(githubError(body, response.status));
+		if (!isRecord(body) || body.type !== "file") throw new Error("GitHub path does not identify a file");
+		const size = requiredNumber(body.size, "size");
+		if (size > maxGitHubFileBytes) throw new Error("GitHub file exceeds the 1MB read limit");
+		if (body.encoding !== "base64" || typeof body.content !== "string") {
+			throw new Error("GitHub did not return readable file content");
+		}
+		const bytes = Buffer.from(body.content.replace(/\s/gu, ""), "base64");
+		if (bytes.length > maxGitHubFileBytes) throw new Error("GitHub file exceeds the 1MB read limit");
+		let content: string;
+		try {
+			content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		} catch {
+			throw new Error("GitHub file is not valid UTF-8 text");
+		}
+		if (content.includes("\0")) throw new Error("GitHub file appears to be binary");
+		return {
+			repository: `${cleanOwner}/${cleanRepository}`,
+			path: requiredString(body.path, "path"),
+			ref: cleanRef,
+			sha: requiredString(body.sha, "sha"),
+			size,
+			htmlUrl: requiredString(body.html_url, "html_url"),
+			content,
 		};
 	}
 
@@ -61,6 +132,16 @@ export class GitHubService {
 		}
 		await runGit(["clone", "--depth", "1", "--single-branch", cloneUrl, destination]);
 		return destination;
+	}
+
+	private requestHeaders(): Record<string, string> {
+		const headers: Record<string, string> = {
+			Accept: "application/vnd.github+json",
+			"User-Agent": "pi-agent-mobile-os",
+			"X-GitHub-Api-Version": "2022-11-28",
+		};
+		if (this.token) headers.Authorization = `Bearer ${this.token}`;
+		return headers;
 	}
 }
 

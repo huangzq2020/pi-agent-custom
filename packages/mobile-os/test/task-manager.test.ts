@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { RuntimeExtensionHost } from "../src/runtime/extensions.ts";
 import { TaskManager } from "../src/task-manager.ts";
-import type { AgentRuntime, ProjectProfile, TaskSnapshot } from "../src/types.ts";
+import type { AgentRuntime, ProjectProfile, RuntimeRequest, TaskSnapshot } from "../src/types.ts";
 import { WorkflowExecutor } from "../src/workflow/executor.ts";
 import { parseWorkflow } from "../src/workflow/parser.ts";
 import { WorkflowRegistry } from "../src/workflow/registry.ts";
@@ -24,8 +24,10 @@ const project: ProjectProfile = {
 
 describe("task manager", () => {
 	it("queues a chat task and streams runtime events", async () => {
+		const requests: RuntimeRequest[] = [];
 		const runtime: AgentRuntime = {
-			async run(_request, onEvent) {
+			async run(request, onEvent) {
+				requests.push(request);
 				onEvent({ type: "text_delta", text: "hello" });
 				return { text: "hello" };
 			},
@@ -36,7 +38,38 @@ describe("task manager", () => {
 
 		expect(completed.status).toBe("SUCCESS");
 		expect(completed.result).toEqual({ text: "hello" });
+		expect(completed.messages?.map(({ role, text }) => ({ role, text }))).toEqual([
+			{ role: "user", text: "say hello" },
+			{ role: "assistant", text: "hello" },
+		]);
+		expect(requests[0]?.sessionId).toBe(created.id);
 		expect(manager.events(created.id).some((event) => event.type === "agent_delta")).toBe(true);
+	});
+
+	it("continues a completed chat in the same runtime session", async () => {
+		const requests: RuntimeRequest[] = [];
+		const runtime: AgentRuntime = {
+			async run(request) {
+				requests.push(request);
+				return { text: requests.length === 1 ? "first answer" : "second answer" };
+			},
+		};
+		const manager = createManager(runtime);
+		const created = manager.create({ projectId: project.id, kind: "chat", prompt: "first question" }, project);
+		await waitForCompletion(manager, created.id);
+
+		const continued = manager.continueChat(created.id, "second question", project);
+		expect(continued.id).toBe(created.id);
+		const completed = await waitForCompletion(manager, created.id);
+
+		expect(requests.map(({ prompt }) => prompt)).toEqual(["first question", "second question"]);
+		expect(requests.map(({ sessionId }) => sessionId)).toEqual([created.id, created.id]);
+		expect(completed.messages?.map(({ role, text }) => ({ role, text }))).toEqual([
+			{ role: "user", text: "first question" },
+			{ role: "assistant", text: "first answer" },
+			{ role: "user", text: "second question" },
+			{ role: "assistant", text: "second answer" },
+		]);
 	});
 
 	it("cancels a running task", async () => {
